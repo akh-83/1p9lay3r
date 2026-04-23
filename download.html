@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор SVG из растра</title>
+    <!-- Подключаем Tailwind для современного UI -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Подключаем библиотеку для трассировки -->
+    <script src="https://unpkg.com/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
+    <style>
+        /* Кастомный скроллбар для эстетики */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .toast-enter { transform: translateY(0); opacity: 1; }
+        .toast-exit { transform: translateY(100%); opacity: 0; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 p-4 md:p-8 font-sans">
+
+    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+        
+        <!-- Шапка -->
+        <div class="bg-slate-800 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold">Растр → SVG Конвертер</h1>
+            <p class="text-slate-300 text-sm mt-2">Загрузи PNG/JPG и получи векторный код</p>
+        </div>
+
+        <div class="p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            <!-- Левая колонка: Управление -->
+            <div class="space-y-6">
+                <!-- Зона загрузки -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">1. Выбери изображение</label>
+                    <div class="flex items-center justify-center w-full">
+                        <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-40 border-2 border-slate-300 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                <svg class="w-8 h-8 mb-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                                <p class="mb-2 text-sm text-slate-500"><span class="font-semibold">Кликни для загрузки</span></p>
+                                <p class="text-xs text-slate-400">PNG, JPG (желательно контрастные)</p>
+                            </div>
+                            <input id="dropzone-file" type="file" class="hidden" accept="image/png, image/jpeg" />
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Настройки -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">2. Режим конвертации</label>
+                    <select id="trace-mode" class="w-full bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 outline-none">
+                        <option value="icon">Иконка (Черно-белая, резкая)</option>
+                        <option value="color">Логотип (Цветной, сглаженный)</option>
+                    </select>
+                </div>
+
+                <!-- Индикатор загрузки -->
+                <div id="loading-indicator" class="hidden text-center text-blue-600 font-medium py-2">
+                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Обрабатываем...
+                </div>
+            </div>
+
+            <!-- Правая колонка: Результат -->
+            <div class="space-y-4 flex flex-col h-full">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Превью SVG</label>
+                    <div id="preview-box" class="h-40 w-full border border-slate-200 rounded-xl bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYGAQYcAP3uCTZhw1gGGYhAGBZIA/ENF5gBgDYzAOZRg1gGGYhAGBZAAATBwDBY15eTMAAAAASUVORK5CYII=')] flex items-center justify-center p-4 overflow-hidden">
+                        <span class="text-slate-400 text-sm">Здесь появится изображение</span>
+                    </div>
+                </div>
+
+                <div class="flex-grow flex flex-col">
+                    <label class="block text-sm font-medium text-slate-700 mb-2">HTML/SVG Код</label>
+                    <textarea id="code-output" readonly class="w-full h-48 bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-mono text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none resize-none" placeholder="<svg>...</svg>"></textarea>
+                    
+                    <button id="copy-btn" disabled class="mt-4 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-xl text-sm px-5 py-3 text-center transition-colors">
+                        Скопировать код
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Уведомление -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 text-white px-6 py-3 rounded-xl shadow-lg transition-all duration-300 toast-exit">
+        Код скопирован!
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('dropzone-file');
+        const modeSelect = document.getElementById('trace-mode');
+        const previewBox = document.getElementById('preview-box');
+        const codeOutput = document.getElementById('code-output');
+        const copyBtn = document.getElementById('copy-btn');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const toast = document.getElementById('toast');
+
+        let currentDataUrl = null;
+
+        // Обработка загрузки файла
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                currentDataUrl = event.target.result;
+                processImage();
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Обработка смены режима
+        modeSelect.addEventListener('change', function() {
+            if (currentDataUrl) processImage();
+        });
+
+        // Основная функция конвертации
+        function processImage() {
+            if (!currentDataUrl) return;
+
+            loadingIndicator.classList.remove('hidden');
+            copyBtn.disabled = true;
+
+            // Настройки для разных режимов
+            const mode = modeSelect.value;
+            let options = {};
+
+            if (mode === 'icon') {
+                // Жесткие настройки для ч/б иконок (максимум резкости, минимум цветов)
+                options = {
+                    ltres: 1,
+                    qtres: 1,
+                    pathomit: 8,
+                    colorsampling: 0,
+                    numberofcolors: 2,
+                    mincolorratio: 0.02,
+                    colorquantcycles: 3,
+                    scale: 1,
+                    viewbox: true
+                };
+            } else {
+                // Более мягкие настройки для цветных логотипов
+                options = {
+                    ltres: 1,
+                    qtres: 1,
+                    pathomit: 8,
+                    colorsampling: 1,
+                    numberofcolors: 16,
+                    mincolorratio: 0.02,
+                    colorquantcycles: 3,
+                    blurradius: 1,
+                    blurdelta: 20,
+                    scale: 1,
+                    viewbox: true
+                };
+            }
+
+            // Вызов библиотеки ImageTracer
+            ImageTracer.imageToSVG(currentDataUrl, function(svgString) {
+                // Убираем лишние атрибуты для чистоты кода
+                let cleanSvg = svgString.replace(/width="[0-9]*" height="[0-9]*" /, '');
+                
+                // Отображаем результат
+                previewBox.innerHTML = cleanSvg;
+                
+                // Подгоняем размер в превью
+                const svgNode = previewBox.querySelector('svg');
+                if(svgNode) {
+                    svgNode.style.width = '100%';
+                    svgNode.style.height = '100%';
+                    svgNode.style.maxHeight = '140px';
+                }
+
+                codeOutput.value = cleanSvg;
+                loadingIndicator.classList.add('hidden');
+                copyBtn.disabled = false;
+            }, options);
+        }
+
+        // Копирование кода
+        copyBtn.addEventListener('click', function() {
+            codeOutput.select();
+            document.execCommand('copy');
+            
+            // Показ уведомления
+            toast.classList.remove('toast-exit');
+            toast.classList.add('toast-enter');
+            
+            setTimeout(() => {
+                toast.classList.remove('toast-enter');
+                toast.classList.add('toast-exit');
+            }, 3000);
+        });
+    </script>
+</body>
+</html>
